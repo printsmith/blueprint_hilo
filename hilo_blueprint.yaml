@@ -61,9 +61,18 @@ blueprint:
           max: 25
           step: 0.5
           unit_of_measurement: celcius      
-    temperature_pre_heat:
-      name: Température de Pré Chauffage
-      description: Température à configurer lorsque le sensor.defi_hilo est dans le statut pre_heat. C'est la température à monter la maison avant le début du défi.
+    temperature_pre_heat_am:
+      name: Température de Pré Chauffage AM
+      description: Température à configurer lorsque le sensor.defi_hilo est dans le statut pre_heat pour un défi AM. C'est la température à monter la maison avant le début du défi.
+      selector:
+        number:
+          min: 15
+          max: 25
+          step: 0.5
+          unit_of_measurement: celcius
+    temperature_pre_heat_pm:
+      name: Température de Pré Chauffage PM
+      description: Température à configurer lorsque le sensor.defi_hilo est dans le statut pre_heat pour un défi PM. C'est la température à monter la maison avant le début du défi.
       selector:
         number:
           min: 15
