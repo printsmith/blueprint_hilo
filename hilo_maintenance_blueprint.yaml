@@ -10,11 +10,6 @@ blueprint:
         target:
           entity:
             - domain: climate
-    enabled:
-      name: Enable maintenance heating
-      default: true
-      selector:
-        boolean: {}
     maintenance_temperature:
       name: Maintenance temperature
       selector:
@@ -35,7 +30,6 @@ blueprint:
         time: {}
 
 variables:
-  enabled: !input enabled
   maintenance_temperature: !input maintenance_temperature
   thermostats: !input thermostats
 
@@ -56,7 +50,7 @@ actions:
             id: maintenance_start
           - condition: template
             value_template: >
-              {{ enabled and state_attr('sensor.defi_hilo', 'next_events')[0].period == 'am' and states('sensor.defi_hilo') == 'scheduled' }}
+              {{ state_attr('sensor.defi_hilo', 'next_events')[0].period == 'am' and states('sensor.defi_hilo') == 'scheduled' }}
         sequence:
           - service: climate.set_temperature
             target: !input thermostats
