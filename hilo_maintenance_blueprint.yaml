@@ -3,13 +3,13 @@ blueprint:
   description: Applies a maintenance temperature before AM Hilo pre-heating. Intended for non-Hilo thermostats (e.g. Sinopé).
   domain: automation
   input:
-    enable_condition:
-      name: Add Condition(s) if needed
-      description: Add conditions if needed to run this automation. If ON or null the automation will run. 
-      default: null
-      selector:
-        entity:
-          domain: input_boolean
+#    enable_condition:
+#      name: Add Condition(s) if needed
+#      description: Add conditions if needed to run this automation. If ON or null the automation will run. 
+#      default: null
+#      selector:
+#        entity:
+#          domain: input_boolean
     thermostats:
       name: Thermostats
       description: The thermostats you want to configure with a maintenance period before the pre heating phase of a Hilo event.
@@ -62,7 +62,7 @@ blueprint:
           unit_of_measurement: minutes
 
 variables:
-  enable_condition: !input enable_condition
+#  enable_condition: !input enable_condition
   thermostats: !input thermostats
   maintenance_temperature: !input maintenance_temperature
   ramping_enabled: !input ramping_enabled
@@ -79,10 +79,10 @@ triggers:
     id: pre_heat
 
 # Global condition for turning off automation (if applied).
-condition:
-  - condition: template
-    value_template: >
-      {{ enable_condition is none or is_state(enable_condition, 'on') }}
+#condition:
+#  - condition: template
+#    value_template: >
+#      {{ enable_condition is none or is_state(enable_condition, 'on') }}
       
 action:
   - choose:
