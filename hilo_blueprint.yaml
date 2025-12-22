@@ -3,6 +3,12 @@ blueprint:
   description: Blueprint permettant de configurer la température des thermostats selon le statut du sensor defi hilo. L'intégration HACS Hilo avec Home Assistant est requise pour utiliser ce blueprint.
   domain: automation
   input:
+    condition:
+      name: Add Condition(s) if needed
+      description: Add conditions if needed to run this automation. Useful for setting a global vacation mode to turn off Hilo automations.
+      default: []
+        selector:
+          condition: {}
     thermostats_defi:
       name: Thermostats Défi
       description: Les thermostats à configurer lors des différents statuts du sensor.defi_hilo. 
@@ -134,7 +140,8 @@ blueprint:
       default: "04:00:00"
       selector:
         time: {}      
-variables:  
+variables:
+  condition: !input condition
   temperature_appreciation_state: !input temperature_appreciation
   temperature_pre_heat_state_am: !input temperature_pre_heat_am
   temperature_pre_heat_state_pm: !input temperature_pre_heat_pm
@@ -211,190 +218,193 @@ triggers:
       {{ now() >= as_datetime(states('completed_time')) }}
     id: defi_completed_time
 actions:
-  - choose:
-      - conditions:
+  - if:
+    - condition: !input condition
+    then:
+    - choose:
+        - conditions:
+            - condition: trigger
+              id: defi_scheduled
+          sequence:
+            - variables:
+                appreciation_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.appreciation_start | as_datetime }}"
+                pre_heat_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.preheat_start | as_datetime }}"
+                reduction_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.reduction_start | as_datetime }}"
+                recovery_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.recovery_start | as_datetime }}" 
+                completed_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.recovery_end | as_datetime }}"         
+        - conditions:
+            - condition: trigger
+              id: maintenance_start
+            - condition: template
+              value_template: >
+                {{ maintenance_enabled_state and state_attr('sensor.defi_hilo', 'next_events')[0].period == 'am' }}
+            - condition: template
+              value_template: >
+                {{ now() < as_datetime(pre_heat_time) }}
+          sequence:
+            - action: climate.set_temperature
+              data:
+                temperature: "{{ maintenance_temperature_state }}"
+              target: !input thermostats_defi    
+        - conditions:
+            - condition: trigger
+              id: defi_pre_heat
+          sequence:
+            - action: climate.set_temperature
+              data:
+                temperature: "{{ temperature_pre_heat_state }}"
+              target: !input thermostats_defi
+        - conditions:
+            - condition: trigger
+              id: defi_pre_heat_time
+          sequence:
+            - action: climate.set_temperature
+              data:
+                temperature: "{{ temperature_pre_heat_state }}"
+              target: !input thermostats_defi
+        - conditions:
+            - condition: trigger
+              id: defi_reduction
+          sequence:
+            - action: climate.set_temperature
+              data:
+                temperature: "{{ temperature_reduction_state }}"
+              target: !input thermostats_defi
+            - if:
+                - condition: template
+                  value_template: "{{ switch_list | length > 0 }}"
+              then:
+                - action: switch.turn_off
+                  target: !input switchs_defi
+            - if:
+                - condition: template
+                  value_template: "{{ light_list | length > 0 }}"
+              then:
+                - action: light.turn_off
+                  target: !input light_defi
+            - if:
+                - condition: template
+                  value_template: "{{ fan_list | length > 0 }}"
+              then:
+                - action: fan.turn_off
+                  target: !input fan_defi
+        - conditions:
+            - condition: trigger
+              id: defi_reduction_time
+          sequence:
+            - action: climate.set_temperature
+              data:
+                temperature: "{{ temperature_reduction_state }}"
+              target: !input thermostats_defi
+            - if:
+                - condition: template
+                  value_template: "{{ switch_list | length > 0 }}"
+              then:
+                - action: switch.turn_off
+                  target: !input switchs_defi
+            - if:
+                - condition: template
+                  value_template: "{{ light_list | length > 0 }}"
+              then:
+                - action: light.turn_off
+                  target: !input light_defi
+            - if:
+                - condition: template
+                  value_template: "{{ fan_list | length > 0 }}"
+              then:
+                - action: fan.turn_off
+                  target: !input fan_defi
+        - conditions:
+            - condition: trigger
+              id: defi_recovery
+          sequence:
+            - action: climate.set_temperature
+              data:
+                temperature: "{{ temperature_recovery_state }}"
+              target: !input thermostats_defi
+            - if:
+                - condition: template
+                  value_template: "{{ switch_list | length > 0 and restart_switch | bool }}"
+              then:
+                - action: switch.turn_on
+                  target: !input switchs_defi
+            - if:
+                - condition: template
+                  value_template: "{{ light_list | length > 0 and restart_light | bool }}"
+              then:
+                - action: light.turn_on
+                  target: !input light_defi
+            - if:
+                - condition: template
+                  value_template: "{{ fan_list | length > 0 and restart_fan | bool }}"
+              then:
+                - action: fan.turn_on
+                  target: !input fan_defi
+        - conditions:
           - condition: trigger
-            id: defi_scheduled
-        sequence:
-          - variables:
-              appreciation_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.appreciation_start | as_datetime }}"
-              pre_heat_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.preheat_start | as_datetime }}"
-              reduction_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.reduction_start | as_datetime }}"
-              recovery_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.recovery_start | as_datetime }}" 
-              completed_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.recovery_end | as_datetime }}"         
-      - conditions:
-          - condition: trigger
-            id: maintenance_start
-          - condition: template
-            value_template: >
-              {{ maintenance_enabled_state and state_attr('sensor.defi_hilo', 'next_events')[0].period == 'am' }}
-          - condition: template
-            value_template: >
-              {{ now() < as_datetime(pre_heat_time) }}
-        sequence:
-          - action: climate.set_temperature
-            data:
-              temperature: "{{ maintenance_temperature_state }}"
-            target: !input thermostats_defi    
-      - conditions:
-          - condition: trigger
-            id: defi_pre_heat
-        sequence:
-          - action: climate.set_temperature
-            data:
-              temperature: "{{ temperature_pre_heat_state }}"
-            target: !input thermostats_defi
-      - conditions:
-          - condition: trigger
-            id: defi_pre_heat_time
-        sequence:
-          - action: climate.set_temperature
-            data:
-              temperature: "{{ temperature_pre_heat_state }}"
-            target: !input thermostats_defi
-      - conditions:
-          - condition: trigger
-            id: defi_reduction
-        sequence:
-          - action: climate.set_temperature
-            data:
-              temperature: "{{ temperature_reduction_state }}"
-            target: !input thermostats_defi
-          - if:
-              - condition: template
-                value_template: "{{ switch_list | length > 0 }}"
-            then:
-              - action: switch.turn_off
-                target: !input switchs_defi
-          - if:
-              - condition: template
-                value_template: "{{ light_list | length > 0 }}"
-            then:
-              - action: light.turn_off
-                target: !input light_defi
-          - if:
-              - condition: template
-                value_template: "{{ fan_list | length > 0 }}"
-            then:
-              - action: fan.turn_off
-                target: !input fan_defi
-      - conditions:
-          - condition: trigger
-            id: defi_reduction_time
-        sequence:
-          - action: climate.set_temperature
-            data:
-              temperature: "{{ temperature_reduction_state }}"
-            target: !input thermostats_defi
-          - if:
-              - condition: template
-                value_template: "{{ switch_list | length > 0 }}"
-            then:
-              - action: switch.turn_off
-                target: !input switchs_defi
-          - if:
-              - condition: template
-                value_template: "{{ light_list | length > 0 }}"
-            then:
-              - action: light.turn_off
-                target: !input light_defi
-          - if:
-              - condition: template
-                value_template: "{{ fan_list | length > 0 }}"
-            then:
-              - action: fan.turn_off
-                target: !input fan_defi
-      - conditions:
-          - condition: trigger
-            id: defi_recovery
-        sequence:
-          - action: climate.set_temperature
-            data:
-              temperature: "{{ temperature_recovery_state }}"
-            target: !input thermostats_defi
-          - if:
-              - condition: template
-                value_template: "{{ switch_list | length > 0 and restart_switch | bool }}"
-            then:
-              - action: switch.turn_on
-                target: !input switchs_defi
-          - if:
-              - condition: template
-                value_template: "{{ light_list | length > 0 and restart_light | bool }}"
-            then:
-              - action: light.turn_on
-                target: !input light_defi
-          - if:
-              - condition: template
-                value_template: "{{ fan_list | length > 0 and restart_fan | bool }}"
-            then:
-              - action: fan.turn_on
-                target: !input fan_defi
-      - conditions:
-        - condition: trigger
-          id: defi_recovery_time
-        sequence:
-          - action: climate.set_temperature
-            data:
-              temperature: "{{ temperature_recovery_state }}"
-            target: !input thermostats_defi
-          - if:
-              - condition: template
-                value_template: "{{ switch_list | length > 0 and restart_switch | bool }}"
-            then:
-              - action: switch.turn_on
-                target: !input switchs_defi
-          - if:
-              - condition: template
-                value_template: "{{ light_list | length > 0 and restart_light | bool }}"
-            then:
-              - action: light.turn_on
-                target: !input light_defi
-          - if:
-              - condition: template
-                value_template: "{{ fan_list | length > 0 and restart_fan | bool }}"
-            then:
-              - action: fan.turn_on
-                target: !input fan_defi
-      - conditions:
-          - condition: trigger
-            id: defi_appreciation
-        sequence:
-          - if:
-              - condition: template
-                value_template: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].period == 'pm' }}"
-            then:
-              - delay: "01:00:00"
-          - action: climate.set_temperature
-            data:
-              temperature: "{{ temperature_appreciation_state }}"
-            target: !input thermostats_defi
-      - conditions:
-          - condition: trigger
-            id: defi_appreciation_time
-        sequence:
-          - if:
-              - condition: template
-                value_template: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].period == 'pm' }}"
-            then:
-              - delay: "01:00:00"
-          - action: climate.set_temperature
-            data:
-              temperature: "{{ temperature_appreciation_state }}"
-            target: !input thermostats_defi
-      - conditions:
-          - condition: trigger
-            id: defi_completed
-        sequence:
-          - action: climate.set_temperature
-            data:
-              temperature: "{{ temperature_completed_state }}"
-            target: !input thermostats_defi
-      - conditions:
-          - condition: trigger
-            id: defi_completed_time
-        sequence:
-          - action: climate.set_temperature
-            data:
-              temperature: "{{ temperature_completed_state }}"
-            target: !input thermostats_defi
+            id: defi_recovery_time
+          sequence:
+            - action: climate.set_temperature
+              data:
+                temperature: "{{ temperature_recovery_state }}"
+              target: !input thermostats_defi
+            - if:
+                - condition: template
+                  value_template: "{{ switch_list | length > 0 and restart_switch | bool }}"
+              then:
+                - action: switch.turn_on
+                  target: !input switchs_defi
+            - if:
+                - condition: template
+                  value_template: "{{ light_list | length > 0 and restart_light | bool }}"
+              then:
+                - action: light.turn_on
+                  target: !input light_defi
+            - if:
+                - condition: template
+                  value_template: "{{ fan_list | length > 0 and restart_fan | bool }}"
+              then:
+                - action: fan.turn_on
+                  target: !input fan_defi
+        - conditions:
+            - condition: trigger
+              id: defi_appreciation
+          sequence:
+            - if:
+                - condition: template
+                  value_template: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].period == 'pm' }}"
+              then:
+                - delay: "01:00:00"
+            - action: climate.set_temperature
+              data:
+                temperature: "{{ temperature_appreciation_state }}"
+              target: !input thermostats_defi
+        - conditions:
+            - condition: trigger
+              id: defi_appreciation_time
+          sequence:
+            - if:
+                - condition: template
+                  value_template: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].period == 'pm' }}"
+              then:
+                - delay: "01:00:00"
+            - action: climate.set_temperature
+              data:
+                temperature: "{{ temperature_appreciation_state }}"
+              target: !input thermostats_defi
+        - conditions:
+            - condition: trigger
+              id: defi_completed
+          sequence:
+            - action: climate.set_temperature
+              data:
+                temperature: "{{ temperature_completed_state }}"
+              target: !input thermostats_defi
+        - conditions:
+            - condition: trigger
+              id: defi_completed_time
+          sequence:
+            - action: climate.set_temperature
+              data:
+                temperature: "{{ temperature_completed_state }}"
+              target: !input thermostats_defi
