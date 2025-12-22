@@ -3,6 +3,13 @@ blueprint:
   description: Applies a maintenance temperature before AM Hilo pre-heating. Intended for non-Hilo thermostats (e.g. Sinopé).
   domain: automation
   input:
+    enable_condition:
+      name: Add Condition(s) if needed
+      description: Add conditions if needed to run this automation. If ON or null the automation will run. 
+      default: null
+      selector:
+        entity:
+          domain: input_boolean
     thermostats:
       name: Thermostats
       description: The thermostats you want to configure with a maintenance period before the pre heating phase of a Hilo event.
@@ -10,13 +17,9 @@ blueprint:
         target:
           entity:
             - domain: climate
-    enabled:
-      name: Enable maintenance heating
-      default: true
-      selector:
-        boolean: {}
     maintenance_temperature:
       name: Maintenance temperature
+      default: 20
       selector:
         number:
           min: 15
@@ -33,11 +36,34 @@ blueprint:
       default: "04:00:00"
       selector:
         time: {}
+    # Enable temperature ramping    
+    ramping_enabled:
+      name: Enable gradual ramping
+      default: true
+      selector:
+        boolean: {}
+    ramp_step:
+      name: Ramp step (°C)
+      default: 0.5
+      selector:
+        number:
+          min: 0.1
+          max: 1
+          step: 0.1
+          unit_of_measurement: °C
+    ramp_delay:
+      name: Ramp delay
+      default: "00:15:00"
+      selector:
+        time: {}
 
 variables:
-  enabled: !input enabled
-  maintenance_temperature: !input maintenance_temperature
+  enable_condition: !input enable_condition
   thermostats: !input thermostats
+  maintenance_temperature: !input maintenance_temperature
+  ramping_enabled: !input ramping_enabled
+  ramp_step: !input ramp_step
+  ramp_delay: !input ramp_delay
 
 triggers:
   - trigger: time
@@ -48,20 +74,51 @@ triggers:
     to: pre_heat
     id: pre_heat
 
-actions:
+# Global condition for turning off automation (if applied).
+condition:
+  - condition: template
+    value_template: >
+      {{ enable_condition is none or is_state(enable_condition, 'on') }}
+      
+action:
   - choose:
-    # Start maintenance heating
+      # Start maintenance ramp-up
       - conditions:
           - condition: trigger
             id: maintenance_start
           - condition: template
             value_template: >
-              {{ enabled and state_attr('sensor.defi_hilo', 'next_events')[0].period == 'am' and states('sensor.defi_hilo') == 'scheduled' }}
+              {{ state_attr('sensor.defi_hilo', 'next_events')[0].period == 'am' and states('sensor.defi_hilo') == 'scheduled' }}
         sequence:
-          - service: climate.set_temperature
-            target: !input thermostats
-            data:
-              temperature: "{{ maintenance_temperature }}"
+          - choose:
+              # If ramping is enabled
+              - conditions:
+                  - condition: template
+                    value_template: "{{ ramping_enabled }}"
+                sequence:
+                  - variables:
+                      target_temp: "{{ maintenance_temperature }}"
+                      phase: "pre_heat"
+                  - repeat:
+                      while:
+                        - condition: template
+                          value_template: >
+                            {{ state_attr(thermostats.entity_id | first, 'temperature') | float < target_temp
+                               and states('sensor.defi_hilo') != phase }}
+                      sequence:
+                        - service: climate.set_temperature
+                          target: !input thermostats
+                          data:
+                            temperature: >
+                              {{ (state_attr(thermostats.entity_id | first, 'temperature') | float + ramp_step) | round(1) }}
+                        - delay: "{{ ramp_delay }}"
+              # Fallback: immediate set if ramping disabled
+              - conditions: []
+                sequence:
+                  - service: climate.set_temperature
+                    target: !input thermostats
+                    data:
+                      temperature: "{{ maintenance_temperature }}"
 
       # Stop maintenance when pre-heat starts
       - conditions:
