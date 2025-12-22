@@ -52,10 +52,14 @@ blueprint:
           step: 0.1
           unit_of_measurement: °C
     ramp_delay:
-      name: Ramp delay
-      default: "00:15:00"
+      name: Ramp delay (minutes)
+      default: 15
       selector:
-        time: {}
+        number:
+          min: 1
+          max: 60
+          step: 1
+          unit_of_measurement: minutes
 
 variables:
   enable_condition: !input enable_condition
@@ -111,7 +115,8 @@ action:
                           data:
                             temperature: >
                               {{ (state_attr(thermostats.entity_id | first, 'temperature') | float + ramp_step) | round(1) }}
-                        - delay: "{{ ramp_delay }}"
+                        - delay: 
+                            minutes: "{{ ramp_delay }}"
               # Fallback: immediate set if ramping disabled
               - conditions: []
                 sequence:
