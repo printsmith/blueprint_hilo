@@ -116,7 +116,7 @@ blueprint:
     maintenance_enabled:
       name: Enable AM Maintenance Heating
       description: Heat non-Hilo thermostats during the early morning before AM events.
-      default: true
+      default: false
       selector:
         boolean: {}
     maintenance_temperature:
