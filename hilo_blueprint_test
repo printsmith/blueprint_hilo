@@ -1,0 +1,422 @@
+blueprint:
+  name: Blueprint Hilo
+  description: Blueprint permettant de configurer la température des thermostats selon le statut du sensor defi hilo. L'intégration HACS Hilo avec Home Assistant est requise pour utiliser ce blueprint.
+  domain: automation
+  input:
+    enable_condition:
+      name: Add Condition(s) if needed
+      description: Add conditions if needed to run this automation. Useful for setting a global vacation mode to turn off Hilo automations.
+      default: null
+      selector:
+        entity:
+          domain: input_boolean
+    thermostats_defi:
+      name: Thermostats Défi
+      description: Les thermostats à configurer lors des différents statuts du sensor.defi_hilo. 
+      selector:
+        target:
+          entity:
+            domain: climate
+    switchs_defi:
+      name: Switchs Défi
+      description: Les switchs à configurer lors des différents statuts du sensor.defi_hilo. Elles vont être éteintes lors du début du défi et allumées lors de la phase de reprise.
+      selector:
+        target:
+          entity:
+            domain: switch
+      default: {}
+    light_defi:
+      name: Lumières Défi
+      description: Les lumières à configurer lors des différents statuts du sensor.defi_hilo. Elles vont être éteintes lors du début du défi et allumées lors de la phase de reprise.
+      selector:
+        target:
+          entity:
+            domain: light
+      default: {}
+    fan_defi:
+      name: Ventilateurs Défi
+      description: Les ventilateurs à configurer lors des différents statuts du sensor.defi_hilo. Ils vont être éteints lors du début du défi et allumés lors de la phase de reprise.
+      selector:
+        target:
+          entity:
+            domain: fan
+      default: {}
+    restart_switch:
+      name: Redémarrer les switchs
+      description: Redémarrer les switchs lors de la phase de reprise? Cela permet de s'assurer que les switchs sont bien éteints ou allumés. Cette option existe parce que si des switchs n'ont pas à être allumés après le défi, il est possible de les laisser éteints.
+      default: true
+      selector:
+        boolean: {}
+    restart_light:
+      name: Redémarrer les lumières
+      description: Redémarrer les lumières lors de la phase de reprise? Cela permet de s'assurer que les lumières sont bien éteintes ou allumées. Cette option existe parce que si des lumières n'ont pas à être allumées après le défi, il est possible de les laisser éteintes.
+      default: true
+      selector:
+        boolean: {}
+    restart_fan:
+      name: Redémarrer les ventilateurs
+      description: Redémarrer les ventilateurs lors de la phase de reprise? Cela permet de s'assurer que les ventilateurs sont bien éteints ou allumés. Cette option existe parce que si des ventilateurs n'ont pas à être allumés après le défi, il est possible de les laisser éteints.
+      default: true
+      selector:
+        boolean: {}
+    temperature_appreciation:
+      name: Température lors des périodes d'ancrage
+      description: Température à configurer lorsque le sensor.defi_hilo est dans le statut appreciation. C'est la température à à configurer lorsque le système est dans sa période d'ancrage.
+      selector:
+        number:
+          min: 15
+          max: 25
+          step: 0.5
+          unit_of_measurement: celcius      
+    temperature_pre_heat_am:
+      name: Température de Pré Chauffage AM
+      description: Température à configurer lorsque le sensor.defi_hilo est dans le statut pre_heat pour un défi AM. C'est la température à monter la maison avant le début du défi.
+      selector:
+        number:
+          min: 15
+          max: 25
+          step: 0.5
+          unit_of_measurement: celcius
+    temperature_pre_heat_pm:
+      name: Température de Pré Chauffage PM
+      description: Température à configurer lorsque le sensor.defi_hilo est dans le statut pre_heat pour un défi PM. C'est la température à monter la maison avant le début du défi.
+      selector:
+        number:
+          min: 15
+          max: 25
+          step: 0.5
+          unit_of_measurement: celcius
+    temperature_reduction:
+      name: Température lors du défi
+      description: Température à configurer lorsque le sensor.defi_hilo est dans le statut reduction. C'est la température à descendre la maison lors du début du défi.
+      selector:
+        number:
+          min: 15
+          max: 25
+          step: 0.5
+          unit_of_measurement: celcius
+    temperature_recovery:
+      name: Température de la phase de reprise
+      description: Température à configurer lorsque le sensor.defi_hilo est dans le statut recovery. C'est la température de retour à la normale progressif après le défi. Il est important de ne pas revenir tout de suite à la température normale tout de suite après le défi.
+      selector:
+        number:
+          min: 15
+          max: 25
+          step: 0.5
+          unit_of_measurement: celcius
+    temperature_completed:
+      name: Température de retour à la normale
+      description: Température à configurer lorsque le sensor.defi_hilo est dans le statut completed. C'est la température de retour à la normale.
+      selector:
+        number:
+          min: 15
+          max: 25
+          step: 0.5
+          unit_of_measurement: celcius 
+    maintenance_enabled:
+      name: Enable AM Maintenance Heating
+      description: Heat non-Hilo thermostats during the early morning before AM events.
+      default: true
+      selector:
+        boolean: {}
+    maintenance_temperature:
+      name: Maintenance Temperature (AM)
+      description: Temperature to maintain between night setback and pre-heat.
+      selector:
+        number:
+          min: 15.0
+          max: 25.0
+          step: 0.5
+          unit_of_measurement: celcius
+          mode: slider
+    maintenance_start:
+      name: Maintenance Start Time
+      description: Start time of AM maintenance heating.
+      default: "01:00:00"
+      selector:
+        time: {}
+    maintenance_end:
+      name: Maintenance End Time
+      description: End time of AM maintenance heating.
+      default: "04:00:00"
+      selector:
+        time: {}
+
+# Global condition for turning off automation (if applied).
+condition:
+  - condition: template
+    value_template: >
+      {{ enable_condition is none or is_state(enable_condition, 'on') }}
+
+variables:
+  condition: !input enable_condition
+  temperature_appreciation_state: !input temperature_appreciation
+  temperature_pre_heat_state_am: !input temperature_pre_heat_am
+  temperature_pre_heat_state_pm: !input temperature_pre_heat_pm
+  temperature_pre_heat_state: >
+    {% set event = state_attr('sensor.defi_hilo', 'next_events') %}
+    {% if event and event[0].period == 'am' %}
+      {{ temperature_pre_heat_state_am }}
+    {% else %}
+      {{ temperature_pre_heat_state_pm }}
+    {% endif %}
+  temperature_reduction_state: !input temperature_reduction
+  temperature_recovery_state: !input temperature_recovery
+  temperature_completed_state: !input temperature_completed
+  thermostat_list: !input thermostats_defi
+  switch_list: !input switchs_defi
+  light_list: !input light_defi
+  fan_list: !input fan_defi
+  appreciation_time: null
+  pre_heat_time: null
+  reduction_time: null
+  recovery_time: null
+  completed_time: null
+  restart_switch: !input restart_switch
+  restart_light: !input restart_light
+  restart_fan: !input restart_fan
+  maintenance_enabled_state: !input maintenance_enabled
+  maintenance_temperature_state: !input maintenance_temperature
+  maintenance_start_time: !input maintenance_start
+  maintenance_end_time: !input maintenance_end
+
+triggers:
+  - trigger: state
+    entity_id: sensor.defi_hilo
+    to: scheduled
+    id: defi_scheduled
+  - trigger: state
+    entity_id: sensor.defi_hilo
+    to: pre_heat
+    id: defi_pre_heat
+  - trigger: state
+    entity_id: sensor.defi_hilo
+    to: reduction
+    id: defi_reduction
+  - trigger: state
+    entity_id: sensor.defi_hilo
+    to: recovery
+    id: defi_recovery
+  - trigger: state
+    entity_id: sensor.defi_hilo
+    to: appreciation
+    id: defi_appreciation
+  - trigger: state
+    entity_id: sensor.defi_hilo
+    to: completed
+    id: defi_completed
+  - trigger: template
+    value_template: >
+      {{ now() >= as_datetime(states('appreciation_time')) }}
+    id: defi_apprication_time
+  - trigger: template
+    value_template: >
+      {{ now() >= as_datetime(states('pre_heat_time')) }}
+    id: defi_pre_heat_time
+  - trigger: template
+    value_template: >
+      {{ now() >= as_datetime(states('reduction_time')) }}
+    id: defi_reduction_time
+  - trigger: template
+    value_template: >
+      {{ now() >= as_datetime(states('recovery_time')) }}
+    id: defi_recovery_time
+  - trigger: template
+    value_template: >
+      {{ now() >= as_datetime(states('completed_time')) }}
+    id: defi_completed_time
+    
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: defi_scheduled
+        sequence:
+          - variables:
+              appreciation_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.appreciation_start | as_datetime }}"
+              pre_heat_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.preheat_start | as_datetime }}"
+              reduction_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.reduction_start | as_datetime }}"
+              recovery_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.recovery_start | as_datetime }}" 
+              completed_time: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].phases.recovery_end | as_datetime }}"         
+      # AM maintenance heating
+      - conditions:
+          - condition: trigger
+            id: maintenance_start
+          - condition: template
+            value_template: >
+              {{ maintenance_enabled_state and state_attr('sensor.defi_hilo', 'next_events')[0].period == 'am' }}
+          - condition: template
+            value_template: >
+              {{ now() < as_datetime(pre_heat_time) }}
+        sequence:
+          - action: climate.set_temperature
+            data:
+              temperature: "{{ maintenance_temperature_state }}"
+            target: !input thermostats_defi    
+      # Pre-heat trigger (Hilo takes over)
+      - conditions:
+          - condition: trigger
+            id: defi_pre_heat
+        sequence:
+          - action: climate.set_temperature
+            data:
+              temperature: "{{ temperature_pre_heat_state }}"
+            target: !input thermostats_defi
+      - conditions:
+          - condition: trigger
+            id: defi_pre_heat_time
+        sequence:
+          - action: climate.set_temperature
+            data:
+              temperature: "{{ temperature_pre_heat_state }}"
+            target: !input thermostats_defi
+      # Reduction Trigger
+      - conditions:
+          - condition: trigger
+            id: defi_reduction
+        sequence:
+          - action: climate.set_temperature
+            data:
+              temperature: "{{ temperature_reduction_state }}"
+            target: !input thermostats_defi
+          - if:
+              - condition: template
+                value_template: "{{ switch_list | length > 0 }}"
+            then:
+              - action: switch.turn_off
+                target: !input switchs_defi
+          - if:
+              - condition: template
+                value_template: "{{ light_list | length > 0 }}"
+            then:
+              - action: light.turn_off
+                target: !input light_defi
+          - if:
+              - condition: template
+                value_template: "{{ fan_list | length > 0 }}"
+            then:
+              - action: fan.turn_off
+                target: !input fan_defi
+      - conditions:
+          - condition: trigger
+            id: defi_reduction_time
+        sequence:
+          - action: climate.set_temperature
+            data:
+              temperature: "{{ temperature_reduction_state }}"
+            target: !input thermostats_defi
+          - if:
+              - condition: template
+                value_template: "{{ switch_list | length > 0 }}"
+            then:
+              - action: switch.turn_off
+                target: !input switchs_defi
+          - if:
+              - condition: template
+                value_template: "{{ light_list | length > 0 }}"
+            then:
+              - action: light.turn_off
+                target: !input light_defi
+          - if:
+              - condition: template
+                value_template: "{{ fan_list | length > 0 }}"
+            then:
+              - action: fan.turn_off
+                target: !input fan_defi
+      # Recovery Trigger
+      - conditions:
+          - condition: trigger
+            id: defi_recovery
+        sequence:
+          - action: climate.set_temperature
+            data:
+              temperature: "{{ temperature_recovery_state }}"
+            target: !input thermostats_defi
+          - if:
+              - condition: template
+                value_template: "{{ switch_list | length > 0 and restart_switch | bool }}"
+            then:
+              - action: switch.turn_on
+                target: !input switchs_defi
+          - if:
+              - condition: template
+                value_template: "{{ light_list | length > 0 and restart_light | bool }}"
+            then:
+              - action: light.turn_on
+                target: !input light_defi
+          - if:
+              - condition: template
+                value_template: "{{ fan_list | length > 0 and restart_fan | bool }}"
+            then:
+              - action: fan.turn_on
+                target: !input fan_defi
+      - conditions:
+        - condition: trigger
+          id: defi_recovery_time
+        sequence:
+          - action: climate.set_temperature
+            data:
+              temperature: "{{ temperature_recovery_state }}"
+            target: !input thermostats_defi
+          - if:
+              - condition: template
+                value_template: "{{ switch_list | length > 0 and restart_switch | bool }}"
+            then:
+              - action: switch.turn_on
+                target: !input switchs_defi
+          - if:
+              - condition: template
+                value_template: "{{ light_list | length > 0 and restart_light | bool }}"
+            then:
+              - action: light.turn_on
+                target: !input light_defi
+          - if:
+              - condition: template
+                value_template: "{{ fan_list | length > 0 and restart_fan | bool }}"
+            then:
+              - action: fan.turn_on
+                target: !input fan_defi
+      # Appreciation Trigger
+      - conditions:
+          - condition: trigger
+            id: defi_appreciation
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].period == 'pm' }}"
+            then:
+              - delay: "01:00:00"
+          - action: climate.set_temperature
+            data:
+              temperature: "{{ temperature_appreciation_state }}"
+            target: !input thermostats_defi
+      - conditions:
+          - condition: trigger
+            id: defi_appreciation_time
+        sequence:
+          - if:
+              - condition: template
+                value_template: "{{ state_attr('sensor.defi_hilo', 'next_events')[0].period == 'pm' }}"
+            then:
+              - delay: "01:00:00"
+          - action: climate.set_temperature
+            data:
+              temperature: "{{ temperature_appreciation_state }}"
+            target: !input thermostats_defi
+      - conditions:
+          - condition: trigger
+            id: defi_completed
+        sequence:
+          - action: climate.set_temperature
+            data:
+              temperature: "{{ temperature_completed_state }}"
+            target: !input thermostats_defi
+      # Completed Trigger
+      - conditions:
+          - condition: trigger
+            id: defi_completed_time
+        sequence:
+          - action: climate.set_temperature
+            data:
+              temperature: "{{ temperature_completed_state }}"
+            target: !input thermostats_defi
