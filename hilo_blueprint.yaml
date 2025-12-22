@@ -6,9 +6,9 @@ blueprint:
     condition:
       name: Add Condition(s) if needed
       description: Add conditions if needed to run this automation. Useful for setting a global vacation mode to turn off Hilo automations.
-      default: []
       selector:
         condition: {}
+      default: []
     thermostats_defi:
       name: Thermostats Défi
       description: Les thermostats à configurer lors des différents statuts du sensor.defi_hilo. 
